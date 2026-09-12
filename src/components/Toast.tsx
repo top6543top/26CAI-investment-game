@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CircleCheck, X } from 'lucide-react'
 import './Toast.css'
 
 interface ToastProps {
@@ -15,7 +16,9 @@ export default function Toast({ message, onDismiss, durationMs = 3000 }: ToastPr
 
   return (
     <div className="toast" role="status">
-      {message}
+      <CircleCheck className="toast-check" />
+      <span>{message}</span>
+      <button onClick={onDismiss} aria-label="알림 닫기" title="알림 닫기"><X /></button>
     </div>
   )
 }

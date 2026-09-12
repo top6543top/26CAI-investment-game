@@ -3,3 +3,7 @@ dist
 .env
 .env.local
 *.tsbuildinfo
+.ui-test
+.idea
+.omc
+supabase/.temp

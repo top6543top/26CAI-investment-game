@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import type { LeaderboardEntry } from '../lib/types'
 
-export function useLeaderboard(currentRound: number) {
+export function useLeaderboard(currentRound: number | null) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
 
   useEffect(() => {
+    if (currentRound === null) return
     let active = true
+    const round = Math.min(Math.max(currentRound, 1), 11)
 
     async function load() {
-      const round = Math.min(Math.max(currentRound, 1), 11)
-
       const [{ data: participants }, { data: holdings }, { data: prices }] = await Promise.all([
         supabase.from('participants').select('id, nickname, cash'),
         supabase.from('holdings').select('participant_id, stock_id, quantity'),

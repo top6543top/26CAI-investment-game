@@ -1,500 +1,365 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BriefcaseBusiness, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, CircleAlert, Flag, Layers3, LoaderCircle, LockKeyhole, Radio, RefreshCw, Trophy, Users, Wallet } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useGameState } from '../hooks/useGameState'
 import BrandBar from '../components/BrandBar'
-import Marquee from '../components/Marquee'
 import StockPriceChart from '../components/StockPriceChart'
-import QuantityStepper from '../components/QuantityStepper'
+import StockAvatar from '../components/StockAvatar'
+import OrderTicket from '../components/OrderTicket'
 import Toast from '../components/Toast'
 import type { Stock, StockPrice } from '../lib/types'
-import { logoForStock } from '../lib/stockLogos'
 import './ParticipantPage.css'
 
 const SEED_MONEY = 1200000
 const SESSION_KEY = 'cai-participant-id'
+interface Me { id: string; nickname: string; cash: number }
+interface RoundInfo { round: number; yearLabel: number }
+type StockFilter = 'all' | 'held'
 
-interface Me {
-  id: string
-  nickname: string
-  cash: number
+function PriceChange({ price, previous }: { price: number; previous?: number }) {
+  if (previous === undefined || previous <= 0) return <span className="pp-change muted">첫 거래</span>
+  const delta = price - previous
+  return <span className={'pp-change ' + (delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'muted')}>
+    {delta > 0 ? <ArrowUpRight /> : delta < 0 ? <ArrowDownRight /> : null}
+    {delta > 0 ? '+' : ''}{((delta / previous) * 100).toFixed(1)}%
+  </span>
 }
-
-interface RoundInfo {
-  round: number
-  yearLabel: number
-}
-
-type View = { name: 'list' } | { name: 'chart'; stockId: number }
 
 export default function ParticipantPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const chartStockId = searchParams.get('stock')
-  const view: View = chartStockId ? { name: 'chart', stockId: Number(chartStockId) } : { name: 'list' }
-  const { gameState, loading } = useGameState()
+  const { gameState, loading, error: connectionError, retry } = useGameState()
   const [nicknameInput, setNicknameInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
+  const [joining, setJoining] = useState(false)
+  const [restoring, setRestoring] = useState(true)
   const [me, setMe] = useState<Me | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [stocks, setStocks] = useState<Stock[]>([])
   const [prices, setPrices] = useState<StockPrice[]>([])
   const [rounds, setRounds] = useState<RoundInfo[]>([])
+  const [marketLoading, setMarketLoading] = useState(false)
+  const [marketError, setMarketError] = useState(false)
+  const [marketAttempt, setMarketAttempt] = useState(0)
   const [holdings, setHoldings] = useState<Record<number, number>>({})
   const [quantities, setQuantities] = useState<Record<number, number>>({})
   const [expandedStockId, setExpandedStockId] = useState<number | null>(null)
   const [lastRoundProfit, setLastRoundProfit] = useState<number | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [participantList, setParticipantList] = useState<{ id: string; nickname: string }[]>([])
+  const [filter, setFilter] = useState<StockFilter>('all')
+  const [sort, setSort] = useState('default')
+  const [pendingStockId, setPendingStockId] = useState<number | null>(null)
+  const buying = useRef(false)
+  const joinPending = useRef(false)
+
+  useEffect(() => { document.title = '거래소 | Uni-D 투자 대회' }, [])
 
   useEffect(() => {
-    document.title = '거래소 | Uni-D 투자 대회'
+    let active = true
+    const savedId = sessionStorage.getItem(SESSION_KEY)
+    if (!savedId) { setRestoring(false); return }
+    supabase.from('participants').select('id, nickname, cash').eq('id', savedId).maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return
+        if (data) setMe({ id: data.id, nickname: data.nickname, cash: data.cash })
+        else if (!error) sessionStorage.removeItem(SESSION_KEY)
+        setRestoring(false)
+      })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
-    if (!me || !gameState || gameState.currentRound >= 1) {
-      setParticipantList([])
-      return
-    }
-
+    if (!me || !gameState || gameState.currentRound >= 1) { setParticipantList([]); return }
+    let active = true
     async function loadParticipants() {
       const { data } = await supabase.from('participants').select('id, nickname').order('created_at')
-      setParticipantList(data ?? [])
+      if (active) setParticipantList(data ?? [])
     }
-
     loadParticipants()
-
-    const channel = supabase
-      .channel('participant_list_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, loadParticipants)
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    const channel = supabase.channel('participant_list_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, loadParticipants).subscribe()
+    return () => { active = false; supabase.removeChannel(channel) }
   }, [me?.id, gameState?.currentRound])
 
   useEffect(() => {
+    let active = true
     setQuantities({})
-
+    setExpandedStockId(null)
+    setError(null)
+    setStocks([])
+    setPrices([])
+    setRounds([])
+    setMarketError(false)
     if (!gameState || gameState.currentRound < 1 || gameState.currentRound > 11) {
-      // No active round (before start, or after end): never keep previously
-      // revealed prices on screen — clear them and bail out of any chart
-      // view, or a stale tab could leak future-round prices after a reset.
-      setStocks([])
-      setPrices([])
-      setRounds([])
-      setSearchParams({}, { replace: true })
+      setMarketLoading(false)
+      // Clear revealed market data on reset, including deep links.
+      if (gameState) setSearchParams({}, { replace: true })
       return
     }
-
-    async function loadStocksAndPrices() {
-      const [{ data: stockRows }, { data: priceRows }, { data: roundRows }] = await Promise.all([
+    const currentRound = gameState.currentRound
+    setMarketLoading(true)
+    async function loadMarket() {
+      const [stockResult, priceResult, roundResult] = await Promise.all([
         supabase.from('stocks').select('id, name, display_order, delisted_round').order('display_order'),
-        supabase
-          .from('stock_prices')
-          .select('stock_id, round, price')
-          .lte('round', gameState!.currentRound)
-          .order('round'),
-        supabase.from('rounds').select('round, year_label').lte('round', gameState!.currentRound).order('round'),
+        supabase.from('stock_prices').select('stock_id, round, price').lte('round', currentRound).order('round'),
+        supabase.from('rounds').select('round, year_label').lte('round', currentRound).order('round'),
       ])
-      setStocks(
-        (stockRows ?? []).map((s) => ({
-          id: s.id,
-          name: s.name,
-          displayOrder: s.display_order,
-          delistedRound: s.delisted_round,
-        })),
-      )
-      setPrices((priceRows ?? []).map((p) => ({ stockId: p.stock_id, round: p.round, price: p.price })))
-      setRounds((roundRows ?? []).map((r) => ({ round: r.round, yearLabel: r.year_label })))
+      if (!active) return
+      if (stockResult.error || priceResult.error || roundResult.error) {
+        setMarketError(true)
+      } else {
+        setStocks((stockResult.data ?? []).map(s => ({ id: s.id, name: s.name, displayOrder: s.display_order, delistedRound: s.delisted_round })))
+        setPrices((priceResult.data ?? []).map(p => ({ stockId: p.stock_id, round: p.round, price: p.price })))
+        setRounds((roundResult.data ?? []).map(r => ({ round: r.round, yearLabel: r.year_label })))
+      }
+      setMarketLoading(false)
     }
-
-    loadStocksAndPrices()
-  }, [gameState?.currentRound])
+    loadMarket().catch(() => { if (active) { setMarketError(true); setMarketLoading(false) } })
+    return () => { active = false }
+  }, [gameState?.currentRound, marketAttempt])
 
   useEffect(() => {
-    if (gameState?.currentRound === 12) {
-      // replace, not push: once the game has ended there is nothing to
-      // "come back" to, so don't leave a trading-screen entry in history.
-      navigate('/display', { replace: true })
-    }
+    if (gameState?.currentRound === 12) navigate('/display', { replace: true })
   }, [gameState?.currentRound, navigate])
 
-  async function refreshHoldings(participantId: string) {
-    const { data } = await supabase.from('holdings').select('stock_id, quantity').eq('participant_id', participantId)
-    const map: Record<number, number> = {}
-    for (const h of data ?? []) map[h.stock_id] = h.quantity
-    setHoldings(map)
-  }
-
-  async function refreshMe(participantId: string) {
-    const { data } = await supabase
-      .from('participants')
-      .select('id, nickname, cash')
-      .eq('id', participantId)
-      .single()
-    if (data) setMe({ id: data.id, nickname: data.nickname, cash: data.cash })
-  }
-
-  async function refreshLastRoundProfit(participantId: string) {
-    const { data } = await supabase
-      .from('asset_history')
-      .select('round_profit')
-      .eq('participant_id', participantId)
-      .order('round', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    setLastRoundProfit(data ? data.round_profit : null)
+  async function refreshPortfolio(participantId: string) {
+    const [person, positions, history] = await Promise.all([
+      supabase.from('participants').select('id, nickname, cash').eq('id', participantId).maybeSingle(),
+      supabase.from('holdings').select('stock_id, quantity').eq('participant_id', participantId),
+      supabase.from('asset_history').select('round_profit').eq('participant_id', participantId).order('round', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    if (person.error || positions.error) return false
+    if (!person.data) {
+      setMe(null)
+      setHoldings({})
+      sessionStorage.removeItem(SESSION_KEY)
+      return false
+    }
+    setMe({ id: person.data.id, nickname: person.data.nickname, cash: person.data.cash })
+    const next: Record<number, number> = {}
+    for (const holding of positions.data ?? []) next[holding.stock_id] = holding.quantity
+    setHoldings(next)
+    if (!history.error) setLastRoundProfit(history.data?.round_profit ?? null)
+    return true
   }
 
   useEffect(() => {
-    if (!me) return
-    refreshHoldings(me.id)
-    refreshMe(me.id)
-    refreshLastRoundProfit(me.id)
+    if (me) refreshPortfolio(me.id)
   }, [me?.id, gameState?.currentRound])
 
-  useEffect(() => {
-    // Restore the session on remount (e.g. navigating to /display and back)
-    // so an in-app route change doesn't look like a logout. sessionStorage
-    // (not localStorage) is intentional: a closed tab or a different
-    // browser still has to re-enter the password, as originally designed.
-    const savedId = sessionStorage.getItem(SESSION_KEY)
-    if (!savedId) return
-    supabase
-      .from('participants')
-      .select('id, nickname, cash')
-      .eq('id', savedId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setMe({ id: data.id, nickname: data.nickname, cash: data.cash })
-        else sessionStorage.removeItem(SESSION_KEY)
-      })
-  }, [])
-
   async function join() {
+    if (joinPending.current || !nicknameInput.trim()) return
+    joinPending.current = true
+    setJoining(true)
     setError(null)
-    const { data, error } = await supabase
-      .rpc('join_game', { p_nickname: nicknameInput, p_password: passwordInput })
-      .single()
-    if (error) {
-      setError(error.message)
-      return
+    try {
+      const { data, error } = await supabase.rpc('join_game', { p_nickname: nicknameInput.trim() }).single()
+      if (error) { setError(error.message); return }
+      if (!data) { setError('입장 정보를 확인하지 못했습니다. 다시 시도해 주세요.'); return }
+      setMe(data as Me)
+      sessionStorage.setItem(SESSION_KEY, (data as Me).id)
+    } catch {
+      setError('연결을 확인한 뒤 다시 입장해 주세요.')
+    } finally {
+      joinPending.current = false
+      setJoining(false)
     }
-    setMe(data as Me)
-    sessionStorage.setItem(SESSION_KEY, (data as Me).id)
   }
 
-  async function buy(stockId: number) {
-    if (!me || !gameState) return
-    const quantity = quantities[stockId] ?? 1
-    if (quantity <= 0) return
+  function priceForRound(stockId: number, round: number) {
+    return prices.find(p => p.stockId === stockId && p.round === round)?.price
+  }
+  function isDelisted(stock: Stock) {
+    return stock.delistedRound !== null && (gameState?.currentRound ?? 0) >= stock.delistedRound
+  }
+  function quantityFor(stockId: number) {
+    const price = priceForRound(stockId, gameState?.currentRound ?? 0) ?? 0
+    const max = price > 0 && me ? Math.floor(me.cash / price) : 0
+    return Math.max(1, Math.min(Math.floor(quantities[stockId] ?? 1), Math.max(1, max)))
+  }
+
+  async function buy(stock: Stock) {
+    if (!me || !gameState || buying.current || gameState.isPaused || isDelisted(stock)) return
+    const price = priceForRound(stock.id, gameState.currentRound)
+    const quantity = quantityFor(stock.id)
+    if (!price || price <= 0 || quantity < 1 || !Number.isSafeInteger(quantity) || price * quantity > me.cash) return
+    buying.current = true
+    setPendingStockId(stock.id)
     setError(null)
-    const price = priceForRound(stockId, gameState.currentRound) ?? 0
-    const stockName = stocks.find((s) => s.id === stockId)?.name ?? '종목'
-    const { error } = await supabase.rpc('buy_stock', {
-      p_nickname: me.nickname,
-      p_stock_id: stockId,
-      p_quantity: quantity,
-    })
-    if (error) {
-      setError(error.message)
-      return
+    try {
+      const { error } = await supabase.rpc('buy_stock', { p_nickname: me.nickname, p_stock_id: stock.id, p_quantity: quantity })
+      if (error) { setError(error.message); return }
+      setQuantities(prev => ({ ...prev, [stock.id]: 1 }))
+      const refreshed = await refreshPortfolio(me.id)
+      setToastMessage(stock.name + ' ' + quantity.toLocaleString() + '주 매수 완료 · ' + (price * quantity).toLocaleString() + '원')
+      if (!refreshed) setError('매수는 완료되었지만 잔액을 갱신하지 못했습니다. 새로고침해 주세요.')
+    } catch {
+      setError('주문 결과를 확인하지 못했습니다. 다시 매수하기 전에 잔액을 새로고침해 주세요.')
+    } finally {
+      buying.current = false
+      setPendingStockId(null)
     }
-    setToastMessage(`${stockName} ${quantity}주 매수 — 총 ${(price * quantity).toLocaleString()}원`)
-    setQuantities((prev) => ({ ...prev, [stockId]: 1 }))
-    const { data } = await supabase.from('participants').select('id, nickname, cash').eq('id', me.id).single()
-    if (data) setMe({ id: data.id, nickname: data.nickname, cash: data.cash })
-    await refreshHoldings(me.id)
   }
 
-  function priceForRound(stockId: number, round: number): number | undefined {
-    return prices.find((p) => p.stockId === stockId && p.round === round)?.price
-  }
+  const brand = <BrandBar>{me ? <div className="pp-brand-team"><Users /><span title={me.nickname}>{me.nickname}</span></div> : undefined}</BrandBar>
+  const errorNotice = error && <div className="inline-error" role="alert"><CircleAlert /><span>{error}</span></div>
 
-  function yearLabelForRound(round: number): number | undefined {
-    return rounds.find((r) => r.round === round)?.yearLabel
-  }
+  if (connectionError) return <main>{brand}<div className="loading-screen"><Radio /><h1>연결이 잠시 끊겼어요</h1><p>{connectionError}</p><button className="secondary-button" onClick={retry}><RefreshCw />다시 연결</button></div></main>
+  if (loading || !gameState || restoring || gameState.currentRound === 12) return <main>{brand}<div className="loading-screen" role="status"><img src="/unid-logo.webp" alt="Uni-D" /><LoaderCircle className="spin" /><p>거래소에 연결하고 있습니다</p></div></main>
 
-  function isDelisted(stock: Stock): boolean {
-    return stock.delistedRound !== null && gameState!.currentRound >= stock.delistedRound
-  }
-
-  function maxAffordable(price: number): number {
-    if (!me || price <= 0) return 1
-    return Math.max(1, Math.floor(me.cash / price))
-  }
-
-  if (loading || !gameState) return <p className="pp-loading">불러오는 중...</p>
-
-  if (!me) {
-    return (
-      <main className="pp-page pp-page-center">
-        <BrandBar />
-        <div className="pp-join">
-          <p className="pp-kicker">Uni-D 모의 투자 대회</p>
-          <h1>팀명으로 입장하세요</h1>
-          <p className="pp-sub">
-            처음 입장이면 원하는 비밀번호를 새로 설정하세요. <br/> 이미 입장했었다면 그때 설정한 비밀번호를 입력하세요.
-          </p>
-          <div className="pp-join-card">
-            <input value={nicknameInput} onChange={(e) => setNicknameInput(e.target.value)} placeholder="1조" />
-            <input
-              type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              placeholder="비밀번호"
-            />
-            <button onClick={join}>입장하기</button>
-          </div>
-          {error && <p className="pp-error">{error}</p>}
-        </div>
-        <p className="pp-credit">제작 정유현</p>
-      </main>
-    )
-  }
-
-  if (gameState.currentRound < 1) {
-    return (
-      <main className="pp-page pp-page-center">
-        <BrandBar />
-        <div className="pp-join">
-          <p className="pp-kicker">Uni-D 모의 투자 대회</p>
-          <h1>{me.nickname} 님</h1>
-          <p className="pp-sub">
-            입장이 완료되었습니다. <br /> 진행자의 시작을 기다려주세요.
-          </p>
-          {participantList.length > 0 && (
-            <div className="pp-waiting-list">
-              <div className="pp-waiting-list-head">
-                <p className="pp-waiting-list-title">참가자 목록</p>
-                <span className="pp-waiting-list-count">{participantList.length}명</span>
-              </div>
-              <ul className="pp-waiting-participants">
-                {participantList.map((p) => (
-                  <li key={p.id} className={p.id === me.id ? 'pp-me' : undefined}>
-                    {p.nickname}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </main>
-    )
-  }
-
-  if (gameState.currentRound === 12) {
-    return <p className="pp-loading">게임 결과로 이동 중...</p>
-  }
-
-  const currentHoldingsValue = Object.entries(holdings).reduce((sum, [stockIdStr, qty]) => {
-    const price = priceForRound(Number(stockIdStr), gameState.currentRound) ?? 0
-    return sum + qty * price
-  }, 0)
-  const totalAssets = me.cash + currentHoldingsValue
-  const returnRate = ((totalAssets - SEED_MONEY) / SEED_MONEY) * 100
-  const heldStocks = stocks.filter((s) => holdings[s.id])
-
-  if (view.name === 'chart') {
-    const stock = stocks.find((s) => s.id === view.stockId)
-    if (!stock) {
-      return null
-    }
-    const currentPrice = priceForRound(stock.id, gameState.currentRound) ?? 0
-    const prevPrice = priceForRound(stock.id, gameState.currentRound - 1)
-    const delta = prevPrice !== undefined ? currentPrice - prevPrice : null
-    const series = rounds.map((r) => ({
-      round: r.round,
-      yearLabel: r.yearLabel,
-      price: priceForRound(stock.id, r.round) ?? 0,
-    }))
-    const holdingQty = holdings[stock.id]
-    const quantity = quantities[stock.id] ?? 1
-    const delisted = isDelisted(stock)
-
-    return (
-      <main className="pp-page">
-        <BrandBar />
-        <Marquee text="장중 매도는 불가능하니 신중하게 매수하세요, 라운드가 종료되면 자동으로 매도됩니다." />
-        <div className="pp-chart-top">
-          <button className="pp-chart-back" onClick={() => navigate(-1)}>
-            ← 종목 리스트로
-          </button>
-          <div className="pp-chart-header">
-            {logoForStock(stock.name) && (
-              <img
-                className="pp-chart-logo"
-                src={logoForStock(stock.name)}
-                alt=""
-                draggable={false}
-                onContextMenu={(e) => e.preventDefault()}
-              />
-            )}
-            <div>
-              <div className="pp-chart-name">
-                {stock.name}
-                {delisted && <span className="pp-delisted-badge">상장폐지</span>}
-              </div>
-              {holdingQty ? <div className="pp-stock-holding">보유 {holdingQty}주</div> : null}
-              <div className="pp-chart-price">{currentPrice.toLocaleString()}원</div>
-              {delta !== null && (
-                <span className={delta >= 0 ? 'pp-delta pp-delta-up' : 'pp-delta pp-delta-down'}>
-                  {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toLocaleString()} (전 라운드 대비)
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="pp-chart-block">
-          <StockPriceChart series={series} />
-        </div>
-        <div className="pp-chart-buy">
-          <QuantityStepper
-            value={quantity}
-            onChange={(next) => setQuantities((prev) => ({ ...prev, [stock.id]: next }))}
-            disabled={gameState.isPaused || delisted}
-            max={maxAffordable(currentPrice)}
-          />
-          <span className="pp-buy-total">{(currentPrice * quantity).toLocaleString()}원</span>
-          <button onClick={() => buy(stock.id)} disabled={gameState.isPaused || delisted}>
-            {delisted ? '거래 불가' : '매수'}
-          </button>
-        </div>
-        {error && <p className="pp-error">{error}</p>}
-        {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
-      </main>
-    )
-  }
-
-  return (
-    <main className="pp-page">
-      <BrandBar />
-      <Marquee text="장중 매도는 불가능하니 신중하게 매수하세요, 라운드가 종료되면 자동으로 매도됩니다." />
-      <div className="pp-header">
-        <div className="pp-row1">
-          <span className="pp-nick">{me.nickname}</span>
-          <div className="pp-row1-right">
-            <button className="pp-rank-btn" onClick={() => navigate('/display')}>
-              순위 보기
-            </button>
-            <span className="pp-round-badge">
-              {yearLabelForRound(gameState.currentRound) ?? ''}년 · {gameState.currentRound}라운드
-            </span>
-          </div>
-        </div>
-        <div className="pp-cash-label">시드머니</div>
-        <div className="pp-cash-amount">{me.cash.toLocaleString()}원</div>
-        <div className="pp-returns-row">
-          <span className={returnRate >= 0 ? 'pp-delta pp-delta-up' : 'pp-delta pp-delta-down'}>
-            처음 대비 {returnRate >= 0 ? '+' : ''}
-            {returnRate.toFixed(1)}%
-          </span>
-          {lastRoundProfit !== null && (
-            <span className={lastRoundProfit >= 0 ? 'pp-delta pp-delta-up' : 'pp-delta pp-delta-down'}>
-              직전 거래 {lastRoundProfit >= 0 ? '+' : ''}
-              {lastRoundProfit.toLocaleString()}원
-            </span>
-          )}
-        </div>
+  if (!me) return (
+    <main className="pp-page pp-entry-page">
+      {brand}
+      <div className="pp-entry">
+        <div className="pp-entry-topline"><span className="eyebrow">UNIVERSITY INVESTMENT CHAMPIONSHIP</span><span className="status-badge">{gameState.currentRound < 1 ? '참가 접수 중' : '대회 진행 중'}</span></div>
+        <img className="pp-entry-logo" src="/unid-logo.webp" alt="Uni-D" draggable={false} />
+        <h1>Uni-D 투자 대회</h1>
+        <p className="pp-entry-sub">우리 팀의 다음 투자는?</p>
+        <dl className="pp-entry-stats">
+          <div><dt><Wallet />시작 자금</dt><dd>120<span>만원</span></dd></div>
+          <div><dt><Flag />투자 라운드</dt><dd>11<span>라운드</span></dd></div>
+        </dl>
+        <form className="pp-join-form" onSubmit={event => { event.preventDefault(); join() }}>
+          <div className="pp-form-heading"><h2>팀 입장</h2><LockKeyhole /><span>팀명으로 바로 입장</span></div>
+          <label htmlFor="team-name">팀명</label>
+          <input id="team-name" name="nickname" autoComplete="username" placeholder="팀명을 입력하세요" value={nicknameInput} onChange={event => setNicknameInput(event.target.value)} required disabled={joining} />
+          {errorNotice}
+          <button type="submit" className="primary-button" disabled={joining || !nicknameInput.trim()}>{joining ? <LoaderCircle className="spin" /> : null}{joining ? '입장 중' : '입장하기'}<ArrowRight /></button>
+        </form>
+        <div className="pp-entry-footer"><span>Uni-D 모의 투자 대회</span><span>제작 정유현</span></div>
       </div>
-
-      {gameState.isPaused && <p className="pp-banner-closed">장이 마감되었습니다.</p>}
-      {error && <p className="pp-error">{error}</p>}
-
-      {heldStocks.length > 0 && (
-        <div className="pp-holdings-block">
-          <p className="pp-listlabel">보유 주식</p>
-          <ul className="pp-holdings-list">
-            {heldStocks.map((stock) => {
-              const qty = holdings[stock.id]
-              const price = priceForRound(stock.id, gameState.currentRound) ?? 0
-              return (
-                <li key={stock.id} className="pp-holdings-row">
-                  <span className="pp-holdings-name">{stock.name}</span>
-                  <span className="pp-holdings-qty">{qty}주</span>
-                  <span className="pp-holdings-value">{(qty * price).toLocaleString()}원</span>
-                </li>
-              )
-            })}
-            <li className="pp-holdings-row pp-holdings-total">
-              <span className="pp-holdings-name">총 매수 금액</span>
-              <span className="pp-holdings-value">{currentHoldingsValue.toLocaleString()}원</span>
-            </li>
-          </ul>
-        </div>
-      )}
-
-      <div className="pp-card">
-        <p className="pp-listlabel">종목</p>
-        <ul className="pp-stocklist">
-        {stocks.map((stock) => {
-          const price = priceForRound(stock.id, gameState.currentRound) ?? 0
-          const prevPrice = priceForRound(stock.id, gameState.currentRound - 1)
-          const delta = prevPrice !== undefined ? price - prevPrice : null
-          const expanded = expandedStockId === stock.id
-          const holdingQty = holdings[stock.id]
-          const quantity = quantities[stock.id] ?? 1
-          const delisted = isDelisted(stock)
-
-          return (
-            <li key={stock.id} className="pp-stock-row">
-              <div className="pp-stock-row-main" onClick={() => setExpandedStockId(expanded ? null : stock.id)}>
-                {logoForStock(stock.name) ? (
-                  <img
-                    className="pp-avatar-img"
-                    src={logoForStock(stock.name)}
-                    alt=""
-                    draggable={false}
-                    onContextMenu={(e) => e.preventDefault()}
-                  />
-                ) : (
-                  <span className="pp-avatar">{stock.displayOrder}</span>
-                )}
-                <div>
-                  <div className="pp-stock-name">
-                    {stock.name}
-                    {delisted && <span className="pp-delisted-badge">상장폐지</span>}
-                  </div>
-                  {holdingQty ? <div className="pp-stock-holding">보유 {holdingQty}주</div> : null}
-                </div>
-                <div className="pp-stock-pricecol">
-                  <div className="pp-stock-price">{price.toLocaleString()}원</div>
-                  {delta !== null && (
-                    <span className={delta >= 0 ? 'pp-delta pp-delta-up' : 'pp-delta pp-delta-down'}>
-                      {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {expanded && (
-                <div className="pp-buyrow">
-                  <QuantityStepper
-                    value={quantity}
-                    onChange={(next) => setQuantities((prev) => ({ ...prev, [stock.id]: next }))}
-                    disabled={gameState.isPaused || delisted}
-                    max={maxAffordable(price)}
-                  />
-                  <span className="pp-buy-total">{(price * quantity).toLocaleString()}원</span>
-                  <button className="pp-buy" onClick={() => buy(stock.id)} disabled={gameState.isPaused || delisted}>
-                    {delisted ? '거래 불가' : '매수'}
-                  </button>
-                  <button
-                    className="pp-chartbtn"
-                    onClick={() => setSearchParams({ stock: String(stock.id) })}
-                  >
-                    차트 보기 →
-                  </button>
-                </div>
-              )}
-            </li>
-          )
-        })}
-        </ul>
-      </div>
-
-      {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
     </main>
   )
+
+  if (gameState.currentRound < 1) return (
+    <main className="pp-page pp-entry-page">
+      {brand}
+      <div className="pp-lobby">
+        <div className="pp-lobby-status"><Check /><span>참가 등록 완료</span></div>
+        <p className="eyebrow">READY TO INVEST</p>
+        <h1>{me.nickname}</h1>
+        <p className="pp-lobby-sub">진행자의 시작을 기다리고 있어요.</p>
+        <div className="pp-lobby-funds"><Wallet /><span>준비된 투자금</span><strong>{me.cash.toLocaleString()}<small> 원</small></strong></div>
+        <section className="pp-lobby-teams">
+          <div className="pp-section-heading"><h2><Users />참가자 목록</h2><span>{participantList.length}팀</span></div>
+          <ul className="pp-team-list">{participantList.map((participant, index) => (
+            <li key={participant.id} className={participant.id === me.id ? 'is-me' : ''}><span className="pp-team-index">{String(index + 1).padStart(2, '0')}</span><span>{participant.nickname}</span>{participant.id === me.id && <b>우리 팀</b>}<Check /></li>
+          ))}</ul>
+        </section>
+        <div className="pp-lobby-bottom"><Radio /><span>게임이 시작되면 거래소가 열립니다</span></div>
+      </div>
+    </main>
+  )
+
+  const currentHoldingsValue = Object.entries(holdings).reduce((sum, [id, quantity]) => sum + quantity * (priceForRound(Number(id), gameState.currentRound) ?? 0), 0)
+  const totalAssets = me.cash + currentHoldingsValue
+  const returnRate = ((totalAssets - SEED_MONEY) / SEED_MONEY) * 100
+  const heldStocks = stocks.filter(stock => holdings[stock.id] > 0)
+  const currentYear = rounds.find(round => round.round === gameState.currentRound)?.yearLabel
+  const upCount = stocks.filter(stock => {
+    const previous = priceForRound(stock.id, gameState.currentRound - 1)
+    return previous !== undefined && (priceForRound(stock.id, gameState.currentRound) ?? 0) > previous
+  }).length
+  const downCount = stocks.filter(stock => {
+    const previous = priceForRound(stock.id, gameState.currentRound - 1)
+    return previous !== undefined && (priceForRound(stock.id, gameState.currentRound) ?? 0) < previous
+  }).length
+  const roundHeader = <section className="pp-round-header">
+    <div className="pp-round-title"><p className="eyebrow">UNI-D INVESTMENT CHAMPIONSHIP</p><h1>{currentYear ? currentYear + '년' : '투자'} <span>거래소</span></h1><div className={'status-badge' + (gameState.isPaused ? ' paused' : '')}>{gameState.isPaused ? '거래 일시정지' : '거래 진행 중'}</div></div>
+    <div className="pp-round-progress"><div><span><Flag />현재 라운드</span><strong>{String(gameState.currentRound).padStart(2, '0')}<small> / 11</small></strong></div><div className="pp-round-steps" role="progressbar" aria-label="대회 라운드" aria-valuemin={0} aria-valuemax={11} aria-valuenow={gameState.currentRound}>{Array.from({ length: 11 }, (_, index) => <span key={index} className={index + 1 === gameState.currentRound ? 'current' : index < gameState.currentRound ? 'complete' : ''} />)}</div><p>{11 - gameState.currentRound > 0 ? '최종 정산까지 ' + (11 - gameState.currentRound) + '라운드' : '마지막 투자 라운드'}</p></div>
+  </section>
+
+  function orderTicket(stock: Stock) {
+    return <OrderTicket price={priceForRound(stock.id, gameState!.currentRound)} quantity={quantityFor(stock.id)} cash={me!.cash} paused={gameState!.isPaused} delisted={isDelisted(stock)} pending={pendingStockId !== null} onChange={next => setQuantities(prev => ({ ...prev, [stock.id]: next }))} onBuy={() => buy(stock)} />
+  }
+  const marketStatus = marketError ? <div className="pp-market-empty"><CircleAlert /><h3>종목을 불러오지 못했어요</h3><button className="secondary-button" onClick={() => setMarketAttempt(value => value + 1)}><RefreshCw />다시 불러오기</button></div> : marketLoading ? <div className="pp-market-empty" role="status"><LoaderCircle className="spin" /><p>시장 정보를 불러오는 중</p></div> : null
+
+  if (chartStockId !== null) {
+    const stock = stocks.find(item => item.id === Number(chartStockId))
+    const price = stock ? priceForRound(stock.id, gameState.currentRound) : undefined
+    const previous = stock ? priceForRound(stock.id, gameState.currentRound - 1) : undefined
+    const series = stock ? rounds.flatMap(round => {
+      const value = priceForRound(stock.id, round.round)
+      return value === undefined ? [] : [{ ...round, price: value }]
+    }) : []
+    return <main className="pp-page">{brand}<div className="pp-shell">
+      <button className="pp-back" onClick={() => { setSearchParams({}); setError(null) }}><ArrowLeft />종목 리스트로</button>
+      {roundHeader}
+      {marketStatus || !stock ? marketStatus || <div className="pp-market-empty"><ChartNoAxesCombined /><h2>종목을 찾을 수 없습니다</h2><button className="secondary-button" onClick={() => setSearchParams({})}>종목 리스트로<ArrowRight /></button></div> : (
+        <div className="pp-detail-layout">
+          <section className="pp-detail-main">
+            <div className="pp-detail-stock"><StockAvatar name={stock.name} order={stock.displayOrder} large /><div><div className="pp-detail-name"><h2>{stock.name}</h2>{isDelisted(stock) && <span className="pp-delisted-badge">상장폐지</span>}</div><p className="eyebrow">UNI-D · {String(stock.displayOrder).padStart(3, '0')}</p></div></div>
+            <div className="pp-detail-quote"><strong>{price === undefined ? '-' : price.toLocaleString()}<small> 원</small></strong><PriceChange price={price ?? 0} previous={previous} /><span>전 라운드 대비</span></div>
+            <div className="pp-chart-heading"><h3>주가 추이</h3><span>전체 기간 · {series.length}개 라운드</span></div>
+            <StockPriceChart series={series} />
+            <dl className="pp-detail-stats"><div><dt>직전 가격</dt><dd>{previous === undefined ? '-' : previous.toLocaleString() + '원'}</dd></div><div><dt>현재 보유</dt><dd>{(holdings[stock.id] ?? 0).toLocaleString()}주</dd></div><div><dt>보유 평가금액</dt><dd>{((holdings[stock.id] ?? 0) * (price ?? 0)).toLocaleString()}원</dd></div></dl>
+          </section>
+          <aside className="pp-detail-order"><div className="pp-section-heading"><h2>매수 주문</h2><LockKeyhole /></div><div className="pp-order-cash"><span>주문 가능 잔액</span><strong>{me.cash.toLocaleString()}원</strong></div>{orderTicket(stock)}{errorNotice}<p className="pp-order-note"><CircleAlert />장중 매도 불가 · 라운드 종료 시 자동 매도</p></aside>
+        </div>
+      )}
+    </div>{toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}</main>
+  }
+
+  const visibleStocks = stocks.filter(stock => filter === 'all' || holdings[stock.id] > 0).sort((a, b) => {
+    if (sort === 'price') return (priceForRound(a.id, gameState.currentRound) ?? 0) - (priceForRound(b.id, gameState.currentRound) ?? 0)
+    if (sort === 'change') {
+      const change = (stock: Stock) => {
+        const previous = priceForRound(stock.id, gameState.currentRound - 1)
+        return previous && previous > 0 ? ((priceForRound(stock.id, gameState.currentRound) ?? 0) - previous) / previous : 0
+      }
+      return change(b) - change(a)
+    }
+    return a.displayOrder - b.displayOrder
+  })
+
+  return <main className="pp-page">
+    {brand}
+    <div className="pp-shell">
+      {roundHeader}
+      <section className="pp-asset-strip" aria-label="내 투자 자산">
+        <div className="pp-total-asset"><p><BriefcaseBusiness />총 자산</p><strong>{marketLoading || marketError ? '-' : totalAssets.toLocaleString()}<small> 원</small></strong><span className={returnRate >= 0 ? 'positive' : 'negative'}>{marketLoading || marketError ? '시장 정보 확인 중' : (returnRate >= 0 ? '+' : '') + returnRate.toFixed(1) + '%'}<em>처음 대비</em></span></div>
+        <div className="pp-cash-asset"><p><Wallet />주문 가능 잔액</p><strong>{me.cash.toLocaleString()}<small> 원</small></strong><span>시작 자금 1,200,000원</span></div>
+        <div className="pp-stock-asset"><p><Layers3 />보유 주식 평가금액</p><strong>{marketLoading || marketError ? '-' : currentHoldingsValue.toLocaleString()}<small> 원</small></strong><span>{heldStocks.length}개 종목 보유</span></div>
+      </section>
+      <div className={'pp-rulebar' + (gameState.isPaused ? ' is-paused' : '')}><CircleAlert /><span>{gameState.isPaused ? '거래가 일시정지되었습니다. 진행자의 재개를 기다려주세요.' : '장중 매도 불가 · 라운드 종료 시 새 가격으로 자동 매도됩니다.'}</span><span className="pp-rule-tag">대회 규칙</span></div>
+      {errorNotice}
+      <div className="pp-layout">
+        <section className="pp-market">
+          <div className="pp-section-heading"><h2>종목</h2><div className="pp-market-direction"><span className="positive"><ArrowUpRight />{upCount}</span><span className="negative"><ArrowDownRight />{downCount}</span></div></div>
+          <div className="pp-market-toolbar"><div className="pp-tabs" role="group" aria-label="종목 필터"><button aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>전체 종목 <span>{stocks.length}</span></button><button aria-pressed={filter === 'held'} onClick={() => setFilter('held')}>보유 종목 <span>{heldStocks.length}</span></button></div><label className="pp-sort"><span className="sr-only">종목 정렬</span><select value={sort} onChange={event => setSort(event.target.value)}><option value="default">기본순</option><option value="change">등락률순</option><option value="price">낮은 가격순</option></select><ChevronDown /></label></div>
+          <div className="pp-stock-columns" aria-hidden="true"><span>종목명</span><span>주가 추이</span><span>현재가 / 등락률</span><span /></div>
+          {marketStatus || <ul className="pp-stocklist">{visibleStocks.map(stock => {
+            const price = priceForRound(stock.id, gameState.currentRound)
+            const previous = priceForRound(stock.id, gameState.currentRound - 1)
+            const expanded = expandedStockId === stock.id
+            const series = prices.filter(point => point.stockId === stock.id).map(point => ({ ...point, yearLabel: rounds.find(round => round.round === point.round)?.yearLabel ?? point.round }))
+            return <li key={stock.id} className={'pp-stock-row' + (expanded ? ' is-expanded' : '')}>
+              <button className="pp-stock-row-main" aria-expanded={expanded} aria-controls={'order-' + stock.id} onClick={() => { setExpandedStockId(expanded ? null : stock.id); setError(null) }}>
+                <div className="pp-stock-identity"><StockAvatar name={stock.name} order={stock.displayOrder} /><div><span className="pp-stock-name">{stock.name}</span><span className="pp-stock-meta">{isDelisted(stock) ? <span className="pp-delisted-badge">상장폐지</span> : holdings[stock.id] > 0 ? <span className="pp-holding-badge">보유 {holdings[stock.id].toLocaleString()}주</span> : 'UNI-D · ' + String(stock.displayOrder).padStart(3, '0')}</span></div></div>
+                <div className="pp-sparkline"><StockPriceChart series={series} compact /></div>
+                <div className="pp-stock-pricecol"><strong>{price === undefined ? '-' : price.toLocaleString()}<small> 원</small></strong><PriceChange price={price ?? 0} previous={previous} /></div>
+                <ChevronDown className="pp-expand-icon" />
+              </button>
+              {expanded && <div className="pp-expanded-order" id={'order-' + stock.id}><div className="pp-expanded-heading"><span>매수 주문</span><button onClick={() => { setSearchParams({ stock: String(stock.id) }); setError(null) }}><ChartNoAxesCombined />차트 보기<ArrowRight /></button></div>{orderTicket(stock)}</div>}
+            </li>
+          })}</ul>}
+          {!marketLoading && !marketError && visibleStocks.length === 0 && <div className="pp-market-empty"><BriefcaseBusiness /><h3>{filter === 'held' ? '아직 보유한 종목이 없어요' : '등록된 종목이 없습니다'}</h3>{filter === 'held' && <button className="secondary-button" onClick={() => setFilter('all')}>전체 종목 보기<ArrowRight /></button>}</div>}
+          <div className="pp-market-footer"><span><Radio />라운드별 확정 가격</span><span>KRW · 원</span></div>
+        </section>
+        <aside className="pp-portfolio">
+          <div className="pp-section-heading"><h2>내 포트폴리오</h2><BriefcaseBusiness /></div>
+          <div className="pp-allocation" aria-label="자산 구성"><div style={{ width: (totalAssets > 0 ? Math.min(100, currentHoldingsValue / totalAssets * 100) : 0) + '%' }} /></div>
+          <div className="pp-allocation-legend"><span><i />주식 {totalAssets > 0 ? (currentHoldingsValue / totalAssets * 100).toFixed(0) : 0}%</span><span><i />현금 {totalAssets > 0 ? (me.cash / totalAssets * 100).toFixed(0) : 0}%</span></div>
+          <ul className="pp-position-list">{heldStocks.map(stock => <li key={stock.id}><button onClick={() => setSearchParams({ stock: String(stock.id) })}><StockAvatar name={stock.name} order={stock.displayOrder} /><span><strong>{stock.name}</strong><small>{holdings[stock.id].toLocaleString()}주 보유</small></span><b>{(holdings[stock.id] * (priceForRound(stock.id, gameState.currentRound) ?? 0)).toLocaleString()}<small>원</small></b><ChevronRight /></button></li>)}</ul>
+          {heldStocks.length === 0 && <p className="pp-portfolio-empty">보유 중인 주식이 없습니다.</p>}
+          {lastRoundProfit !== null && <div className="pp-last-profit"><span>직전 라운드 수익</span><strong className={lastRoundProfit >= 0 ? 'positive' : 'negative'}>{lastRoundProfit > 0 ? '+' : ''}{lastRoundProfit.toLocaleString()}원</strong></div>}
+          <button className="pp-leaderboard-link" onClick={() => navigate('/display')}><span className="pp-trophy-icon"><Trophy /></span><span><strong>지금 우리 팀 순위는?</strong><small>대회 순위 보기</small></span><ArrowUpRight /></button>
+          <div className="pp-portfolio-foot"><img src="/unid-logo.webp" alt="" /><span>Uni-D 모의 투자 대회<br /><small>제작 정유현</small></span></div>
+        </aside>
+      </div>
+    </div>
+    {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
+  </main>
 }

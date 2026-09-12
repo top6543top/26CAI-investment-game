@@ -1,8 +1,5 @@
 begin;
 
-update host_config set pin_hash = null where id = 1;
-select set_host_pin('1111');
-
 insert into stocks (id, name, display_order) overriding system value values (902, '넥스트종목', 1);
 insert into rounds (round, year_label) values (1, 2016), (2, 2017);
 insert into stock_prices (stock_id, round, price) values (902, 1, 10000), (902, 2, 15000);
@@ -18,7 +15,7 @@ select pg_temp.test_assert(
 );
 
 select pg_temp.test_assert(
-  host_next_year('1111') = 2,
+  host_next_year() = 2,
   'host_next_year returns the new round number'
 );
 
@@ -41,7 +38,7 @@ update game_state set current_round = 11 where id = 1;
 do $$
 begin
   begin
-    perform host_next_year('1111');
+    perform host_next_year();
     raise exception 'should not reach here: advancing past round 11 was allowed';
   exception when others then
     if sqlerrm not like '%진행할 수 없는%' then

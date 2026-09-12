@@ -1,16 +1,5 @@
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  max-width: calc(100% - 40px);
-  background: var(--pp-ink);
-  color: var(--pp-surface);
-  font-size: 13.5px;
-  font-weight: 600;
-  padding: 12px 18px;
-  border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-  z-index: 50;
-  text-align: center;
-}
+.toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 32px); background: #26362e; border: 1px solid #507a60; color: var(--pp-ink); font-size: 13px; font-weight: 500; line-height: 1.5; padding: 12px 12px 12px 16px; border-radius: 8px; box-shadow: 0 12px 40px rgb(0 0 0 / 35%); z-index: 50; }
+.toast-check { color: var(--pp-buy); }
+.toast span { overflow-wrap: anywhere; }
+.toast button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; flex-shrink: 0; border: 0; color: var(--pp-ink-dim); background: transparent; }
+.toast button:hover { color: var(--pp-ink); background: #36503f; }

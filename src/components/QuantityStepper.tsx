@@ -1,3 +1,4 @@
+import { Minus, Plus } from 'lucide-react'
 import './QuantityStepper.css'
 
 interface QuantityStepperProps {
@@ -11,7 +12,7 @@ interface QuantityStepperProps {
 export default function QuantityStepper({ value, onChange, disabled, min = 1, max }: QuantityStepperProps) {
   const canBuyAny = max >= min
   const clampedMax = Math.max(max, min)
-  const safeValue = Number.isFinite(value) ? Math.min(Math.max(value, min), clampedMax) : min
+  const safeValue = Number.isFinite(value) ? Math.min(Math.max(Math.floor(value), min), clampedMax) : min
 
   function handleTextChange(raw: string) {
     const digitsOnly = raw.replace(/[^0-9]/g, '')
@@ -32,14 +33,16 @@ export default function QuantityStepper({ value, onChange, disabled, min = 1, ma
         onClick={() => onChange(Math.max(min, safeValue - 1))}
         disabled={isDisabled || safeValue <= min}
         aria-label="수량 줄이기"
+        title="수량 줄이기"
       >
-        −
+        <Minus />
       </button>
       <input
         className="qty-stepper-input"
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
+        aria-label="매수 수량"
         value={safeValue}
         onChange={(e) => handleTextChange(e.target.value)}
         disabled={isDisabled}
@@ -50,12 +53,14 @@ export default function QuantityStepper({ value, onChange, disabled, min = 1, ma
         onClick={() => onChange(Math.min(clampedMax, safeValue + 1))}
         disabled={isDisabled || safeValue >= clampedMax}
         aria-label="수량 늘리기"
+        title="수량 늘리기"
       >
-        +
+        <Plus />
       </button>
       <button
         type="button"
         className="qty-stepper-max"
+        title="매수 가능한 최대 수량"
         onClick={() => onChange(clampedMax)}
         disabled={isDisabled}
       >

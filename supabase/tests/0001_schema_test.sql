@@ -52,10 +52,5 @@ begin
 end;
 $$;
 
-select pg_temp.test_assert(
-  (select count(*) from host_config) = 0,
-  'anon sees zero rows from host_config (RLS enabled, no policies at all — SELECT silently filters rather than erroring)'
-);
-
 reset role;
 rollback;

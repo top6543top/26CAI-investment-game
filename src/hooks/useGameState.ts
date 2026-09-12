@@ -5,9 +5,13 @@ import type { GameState } from '../lib/types'
 export function useGameState() {
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setError(null)
 
     async function load() {
       const { data, error } = await supabase
@@ -18,7 +22,7 @@ export function useGameState() {
 
       if (!active) return
       if (error) {
-        console.error(error)
+        setError('게임에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.')
         setLoading(false)
         return
       }
@@ -26,7 +30,11 @@ export function useGameState() {
       setLoading(false)
     }
 
-    load()
+    load().catch(() => {
+      if (!active) return
+      setError('게임에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      setLoading(false)
+    })
 
     const channel = supabase
       .channel('game_state_changes')
@@ -35,6 +43,7 @@ export function useGameState() {
         { event: 'UPDATE', schema: 'public', table: 'game_state' },
         (payload) => {
           const row = payload.new as { current_round: number; is_paused: boolean }
+          setError(null)
           setGameState({ currentRound: row.current_round, isPaused: row.is_paused })
         },
       )
@@ -44,7 +53,7 @@ export function useGameState() {
       active = false
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [attempt])
 
-  return { gameState, loading }
+  return { gameState, loading, error, retry: () => setAttempt((value) => value + 1) }
 }
