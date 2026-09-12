@@ -15,7 +15,7 @@ export default function HostPage() {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
 
   useEffect(() => {
-    document.title = '관리자 | CAI LT 투자 대회'
+    document.title = '관리자 | Uni-D 투자 대회'
   }, [])
 
   async function callHostRpc(confirmMessage: string, fn: string, extraArgs: Record<string, unknown> = {}) {

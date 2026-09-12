@@ -19,7 +19,7 @@ export default function DisplayPage() {
   const [history, setHistory] = useState<AssetHistoryEntry[]>([])
 
   useEffect(() => {
-    document.title = '순위 | CAI LT 투자 대회'
+    document.title = '순위 | Uni-D 투자 대회'
   }, [])
 
   useEffect(() => {

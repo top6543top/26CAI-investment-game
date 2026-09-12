@@ -244,6 +244,10 @@
 }
 .pp-delta-up { color: var(--pp-buy); background: var(--pp-gain-bg); }
 .pp-delta-down { color: var(--pp-loss); background: var(--pp-loss-bg); }
+.pp-delisted-badge {
+  font-size: 11px; font-weight: 800; color: #fff; background: var(--pp-loss);
+  padding: 2px 6px; border-radius: 6px; margin-left: 6px; vertical-align: middle;
+}
 
 .pp-buy-total {
   font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700; color: var(--pp-ink-dim);

@@ -48,7 +48,7 @@ export default function ParticipantPage() {
   const [participantList, setParticipantList] = useState<{ id: string; nickname: string }[]>([])
 
   useEffect(() => {
-    document.title = '거래소 | CAI LT 투자 대회'
+    document.title = '거래소 | Uni-D 투자 대회'
   }, [])
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function ParticipantPage() {
 
     async function loadStocksAndPrices() {
       const [{ data: stockRows }, { data: priceRows }, { data: roundRows }] = await Promise.all([
-        supabase.from('stocks').select('id, name, display_order').order('display_order'),
+        supabase.from('stocks').select('id, name, display_order, delisted_round').order('display_order'),
         supabase
           .from('stock_prices')
           .select('stock_id, round, price')
@@ -98,7 +98,14 @@ export default function ParticipantPage() {
           .order('round'),
         supabase.from('rounds').select('round, year_label').lte('round', gameState!.currentRound).order('round'),
       ])
-      setStocks((stockRows ?? []).map((s) => ({ id: s.id, name: s.name, displayOrder: s.display_order })))
+      setStocks(
+        (stockRows ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          displayOrder: s.display_order,
+          delistedRound: s.delisted_round,
+        })),
+      )
       setPrices((priceRows ?? []).map((p) => ({ stockId: p.stock_id, round: p.round, price: p.price })))
       setRounds((roundRows ?? []).map((r) => ({ round: r.round, yearLabel: r.year_label })))
     }
@@ -210,6 +217,10 @@ export default function ParticipantPage() {
     return rounds.find((r) => r.round === round)?.yearLabel
   }
 
+  function isDelisted(stock: Stock): boolean {
+    return stock.delistedRound !== null && gameState!.currentRound >= stock.delistedRound
+  }
+
   function maxAffordable(price: number): number {
     if (!me || price <= 0) return 1
     return Math.max(1, Math.floor(me.cash / price))
@@ -222,7 +233,7 @@ export default function ParticipantPage() {
       <main className="pp-page pp-page-center">
         <BrandBar />
         <div className="pp-join">
-          <p className="pp-kicker">CAI 모의 투자 대회</p>
+          <p className="pp-kicker">Uni-D 모의 투자 대회</p>
           <h1>팀명으로 입장하세요</h1>
           <p className="pp-sub">
             처음 입장이면 원하는 비밀번호를 새로 설정하세요. <br/> 이미 입장했었다면 그때 설정한 비밀번호를 입력하세요.
@@ -239,7 +250,7 @@ export default function ParticipantPage() {
           </div>
           {error && <p className="pp-error">{error}</p>}
         </div>
-        <p className="pp-credit">제작 윤석현</p>
+        <p className="pp-credit">제작 정유현</p>
       </main>
     )
   }
@@ -249,7 +260,7 @@ export default function ParticipantPage() {
       <main className="pp-page pp-page-center">
         <BrandBar />
         <div className="pp-join">
-          <p className="pp-kicker">CAI 모의 투자 대회</p>
+          <p className="pp-kicker">Uni-D 모의 투자 대회</p>
           <h1>{me.nickname} 님</h1>
           <p className="pp-sub">
             입장이 완료되었습니다. <br /> 진행자의 시작을 기다려주세요.
@@ -301,6 +312,7 @@ export default function ParticipantPage() {
     }))
     const holdingQty = holdings[stock.id]
     const quantity = quantities[stock.id] ?? 1
+    const delisted = isDelisted(stock)
 
     return (
       <main className="pp-page">
@@ -321,7 +333,10 @@ export default function ParticipantPage() {
               />
             )}
             <div>
-              <div className="pp-chart-name">{stock.name}</div>
+              <div className="pp-chart-name">
+                {stock.name}
+                {delisted && <span className="pp-delisted-badge">상장폐지</span>}
+              </div>
               {holdingQty ? <div className="pp-stock-holding">보유 {holdingQty}주</div> : null}
               <div className="pp-chart-price">{currentPrice.toLocaleString()}원</div>
               {delta !== null && (
@@ -339,12 +354,12 @@ export default function ParticipantPage() {
           <QuantityStepper
             value={quantity}
             onChange={(next) => setQuantities((prev) => ({ ...prev, [stock.id]: next }))}
-            disabled={gameState.isPaused}
+            disabled={gameState.isPaused || delisted}
             max={maxAffordable(currentPrice)}
           />
           <span className="pp-buy-total">{(currentPrice * quantity).toLocaleString()}원</span>
-          <button onClick={() => buy(stock.id)} disabled={gameState.isPaused}>
-            매수
+          <button onClick={() => buy(stock.id)} disabled={gameState.isPaused || delisted}>
+            {delisted ? '거래 불가' : '매수'}
           </button>
         </div>
         {error && <p className="pp-error">{error}</p>}
@@ -421,6 +436,7 @@ export default function ParticipantPage() {
           const expanded = expandedStockId === stock.id
           const holdingQty = holdings[stock.id]
           const quantity = quantities[stock.id] ?? 1
+          const delisted = isDelisted(stock)
 
           return (
             <li key={stock.id} className="pp-stock-row">
@@ -437,7 +453,10 @@ export default function ParticipantPage() {
                   <span className="pp-avatar">{stock.displayOrder}</span>
                 )}
                 <div>
-                  <div className="pp-stock-name">{stock.name}</div>
+                  <div className="pp-stock-name">
+                    {stock.name}
+                    {delisted && <span className="pp-delisted-badge">상장폐지</span>}
+                  </div>
                   {holdingQty ? <div className="pp-stock-holding">보유 {holdingQty}주</div> : null}
                 </div>
                 <div className="pp-stock-pricecol">
@@ -454,12 +473,12 @@ export default function ParticipantPage() {
                   <QuantityStepper
                     value={quantity}
                     onChange={(next) => setQuantities((prev) => ({ ...prev, [stock.id]: next }))}
-                    disabled={gameState.isPaused}
+                    disabled={gameState.isPaused || delisted}
                     max={maxAffordable(price)}
                   />
                   <span className="pp-buy-total">{(price * quantity).toLocaleString()}원</span>
-                  <button className="pp-buy" onClick={() => buy(stock.id)} disabled={gameState.isPaused}>
-                    매수
+                  <button className="pp-buy" onClick={() => buy(stock.id)} disabled={gameState.isPaused || delisted}>
+                    {delisted ? '거래 불가' : '매수'}
                   </button>
                   <button
                     className="pp-chartbtn"

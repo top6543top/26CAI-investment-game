@@ -7,6 +7,7 @@ export interface Stock {
   id: number
   name: string
   displayOrder: number
+  delistedRound: number | null
 }
 
 export interface StockPrice {
