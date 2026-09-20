@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BriefcaseBusiness, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, CircleAlert, Flag, Layers3, LoaderCircle, LockKeyhole, Radio, RefreshCw, Trophy, Users, Wallet } from 'lucide-react'
+import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, BriefcaseBusiness, ChartNoAxesCombined, Check, ChevronDown, ChevronRight, CircleAlert, Flag, Layers3, LoaderCircle, Radio, RefreshCw, Trophy, Users, Wallet } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useGameState } from '../hooks/useGameState'
 import BrandBar from '../components/BrandBar'
@@ -193,7 +193,7 @@ export default function ParticipantPage() {
       if (error) { setError(error.message); return }
       setQuantities(prev => ({ ...prev, [stock.id]: 1 }))
       const refreshed = await refreshPortfolio(me.id)
-      setToastMessage(stock.name + ' ' + quantity.toLocaleString() + '주 매수 완료 · ' + (price * quantity).toLocaleString() + '원')
+      setToastMessage(stock.name + ' ' + quantity.toLocaleString() + '주 매수 완료, ' + (price * quantity).toLocaleString() + '원')
       if (!refreshed) setError('매수는 완료되었지만 잔액을 갱신하지 못했습니다. 새로고침해 주세요.')
     } catch {
       setError('주문 결과를 확인하지 못했습니다. 다시 매수하기 전에 잔액을 새로고침해 주세요.')
@@ -213,16 +213,16 @@ export default function ParticipantPage() {
     <main className="pp-page pp-entry-page">
       {brand}
       <div className="pp-entry">
-        <div className="pp-entry-topline"><span className="eyebrow">UNIVERSITY INVESTMENT CHAMPIONSHIP</span><span className="status-badge">{gameState.currentRound < 1 ? '참가 접수 중' : '대회 진행 중'}</span></div>
+        <div className="pp-entry-topline"><span className="eyebrow">팀 대항 모의 투자</span><span className="status-badge">{gameState.currentRound < 1 ? '참가 접수 중' : '대회 진행 중'}</span></div>
         <img className="pp-entry-logo" src="/unid-logo.webp" alt="Uni-D" draggable={false} />
         <h1>Uni-D 투자 대회</h1>
         <p className="pp-entry-sub">우리 팀의 다음 투자는?</p>
         <dl className="pp-entry-stats">
-          <div><dt><Wallet />시작 자금</dt><dd>120<span>만원</span></dd></div>
-          <div><dt><Flag />투자 라운드</dt><dd>11<span>라운드</span></dd></div>
+          <div><dt>시작 자금</dt><dd>120<span>만원</span></dd></div>
+          <div><dt>투자 라운드</dt><dd>11<span>라운드</span></dd></div>
         </dl>
         <form className="pp-join-form" onSubmit={event => { event.preventDefault(); join() }}>
-          <div className="pp-form-heading"><h2>팀 입장</h2><LockKeyhole /><span>팀명으로 바로 입장</span></div>
+          <div className="pp-form-heading"><h2>팀 입장</h2><span>팀명만 입력하면 바로 입장합니다</span></div>
           <label htmlFor="team-name">팀명</label>
           <input id="team-name" name="nickname" autoComplete="username" placeholder="팀명을 입력하세요" value={nicknameInput} onChange={event => setNicknameInput(event.target.value)} required disabled={joining} />
           {errorNotice}
@@ -238,12 +238,11 @@ export default function ParticipantPage() {
       {brand}
       <div className="pp-lobby">
         <div className="pp-lobby-status"><Check /><span>참가 등록 완료</span></div>
-        <p className="eyebrow">READY TO INVEST</p>
         <h1>{me.nickname}</h1>
         <p className="pp-lobby-sub">진행자의 시작을 기다리고 있어요.</p>
         <div className="pp-lobby-funds"><Wallet /><span>준비된 투자금</span><strong>{me.cash.toLocaleString()}<small> 원</small></strong></div>
         <section className="pp-lobby-teams">
-          <div className="pp-section-heading"><h2><Users />참가자 목록</h2><span>{participantList.length}팀</span></div>
+          <div className="pp-section-heading"><h2>참가자 목록</h2><span>{participantList.length}팀</span></div>
           <ul className="pp-team-list">{participantList.map((participant, index) => (
             <li key={participant.id} className={participant.id === me.id ? 'is-me' : ''}><span className="pp-team-index">{String(index + 1).padStart(2, '0')}</span><span>{participant.nickname}</span>{participant.id === me.id && <b>우리 팀</b>}<Check /></li>
           ))}</ul>
@@ -267,7 +266,7 @@ export default function ParticipantPage() {
     return previous !== undefined && (priceForRound(stock.id, gameState.currentRound) ?? 0) < previous
   }).length
   const roundHeader = <section className="pp-round-header">
-    <div className="pp-round-title"><p className="eyebrow">UNI-D INVESTMENT CHAMPIONSHIP</p><h1>{currentYear ? currentYear + '년' : '투자'} <span>거래소</span></h1><div className={'status-badge' + (gameState.isPaused ? ' paused' : '')}>{gameState.isPaused ? '거래 일시정지' : '거래 진행 중'}</div></div>
+    <div className="pp-round-title"><p className="eyebrow">Uni-D 투자 대회</p><h1>{currentYear ? currentYear + '년' : '투자'} <span>거래소</span></h1><div className={'status-badge' + (gameState.isPaused ? ' paused' : '')}>{gameState.isPaused ? '거래 일시정지' : '거래 진행 중'}</div></div>
     <div className="pp-round-progress"><div><span><Flag />현재 라운드</span><strong>{String(gameState.currentRound).padStart(2, '0')}<small> / 11</small></strong></div><div className="pp-round-steps" role="progressbar" aria-label="대회 라운드" aria-valuemin={0} aria-valuemax={11} aria-valuenow={gameState.currentRound}>{Array.from({ length: 11 }, (_, index) => <span key={index} className={index + 1 === gameState.currentRound ? 'current' : index < gameState.currentRound ? 'complete' : ''} />)}</div><p>{11 - gameState.currentRound > 0 ? '최종 정산까지 ' + (11 - gameState.currentRound) + '라운드' : '마지막 투자 라운드'}</p></div>
   </section>
 
@@ -290,13 +289,13 @@ export default function ParticipantPage() {
       {marketStatus || !stock ? marketStatus || <div className="pp-market-empty"><ChartNoAxesCombined /><h2>종목을 찾을 수 없습니다</h2><button className="secondary-button" onClick={() => setSearchParams({})}>종목 리스트로<ArrowRight /></button></div> : (
         <div className="pp-detail-layout">
           <section className="pp-detail-main">
-            <div className="pp-detail-stock"><StockAvatar name={stock.name} order={stock.displayOrder} large /><div><div className="pp-detail-name"><h2>{stock.name}</h2>{isDelisted(stock) && <span className="pp-delisted-badge">상장폐지</span>}</div><p className="eyebrow">UNI-D · {String(stock.displayOrder).padStart(3, '0')}</p></div></div>
+            <div className="pp-detail-stock"><StockAvatar name={stock.name} order={stock.displayOrder} large /><div><div className="pp-detail-name"><h2>{stock.name}</h2>{isDelisted(stock) && <span className="pp-delisted-badge">상장폐지</span>}</div><p className="eyebrow">종목번호 {String(stock.displayOrder).padStart(3, '0')}</p></div></div>
             <div className="pp-detail-quote"><strong>{price === undefined ? '-' : price.toLocaleString()}<small> 원</small></strong><PriceChange price={price ?? 0} previous={previous} /><span>전 라운드 대비</span></div>
-            <div className="pp-chart-heading"><h3>주가 추이</h3><span>전체 기간 · {series.length}개 라운드</span></div>
+            <div className="pp-chart-heading"><h3>주가 추이</h3><span>{series.length}개 라운드 전체</span></div>
             <StockPriceChart series={series} />
             <dl className="pp-detail-stats"><div><dt>직전 가격</dt><dd>{previous === undefined ? '-' : previous.toLocaleString() + '원'}</dd></div><div><dt>현재 보유</dt><dd>{(holdings[stock.id] ?? 0).toLocaleString()}주</dd></div><div><dt>보유 평가금액</dt><dd>{((holdings[stock.id] ?? 0) * (price ?? 0)).toLocaleString()}원</dd></div></dl>
           </section>
-          <aside className="pp-detail-order"><div className="pp-section-heading"><h2>매수 주문</h2><LockKeyhole /></div><div className="pp-order-cash"><span>주문 가능 잔액</span><strong>{me.cash.toLocaleString()}원</strong></div>{orderTicket(stock)}{errorNotice}<p className="pp-order-note"><CircleAlert />장중 매도 불가 · 라운드 종료 시 자동 매도</p></aside>
+          <aside className="pp-detail-order"><div className="pp-section-heading"><h2>매수 주문</h2></div><div className="pp-order-cash"><span>주문 가능 잔액</span><strong>{me.cash.toLocaleString()}원</strong></div>{orderTicket(stock)}{errorNotice}<p className="pp-order-note"><CircleAlert />장중에는 매도할 수 없습니다. 라운드가 끝나면 자동으로 매도됩니다.</p></aside>
         </div>
       )}
     </div>{toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}</main>
@@ -323,7 +322,7 @@ export default function ParticipantPage() {
         <div className="pp-cash-asset"><p><Wallet />주문 가능 잔액</p><strong>{me.cash.toLocaleString()}<small> 원</small></strong><span>시작 자금 1,200,000원</span></div>
         <div className="pp-stock-asset"><p><Layers3 />보유 주식 평가금액</p><strong>{marketLoading || marketError ? '-' : currentHoldingsValue.toLocaleString()}<small> 원</small></strong><span>{heldStocks.length}개 종목 보유</span></div>
       </section>
-      <div className={'pp-rulebar' + (gameState.isPaused ? ' is-paused' : '')}><CircleAlert /><span>{gameState.isPaused ? '거래가 일시정지되었습니다. 진행자의 재개를 기다려주세요.' : '장중 매도 불가 · 라운드 종료 시 새 가격으로 자동 매도됩니다.'}</span><span className="pp-rule-tag">대회 규칙</span></div>
+      <div className={'pp-rulebar' + (gameState.isPaused ? ' is-paused' : '')}><CircleAlert /><span>{gameState.isPaused ? '거래가 일시정지되었습니다. 진행자의 재개를 기다려주세요.' : '장중에는 매도할 수 없습니다. 라운드가 끝나면 새 가격으로 자동 매도됩니다.'}</span><span className="pp-rule-tag">대회 규칙</span></div>
       {errorNotice}
       <div className="pp-layout">
         <section className="pp-market">
@@ -337,7 +336,7 @@ export default function ParticipantPage() {
             const series = prices.filter(point => point.stockId === stock.id).map(point => ({ ...point, yearLabel: rounds.find(round => round.round === point.round)?.yearLabel ?? point.round }))
             return <li key={stock.id} className={'pp-stock-row' + (expanded ? ' is-expanded' : '')}>
               <button className="pp-stock-row-main" aria-expanded={expanded} aria-controls={'order-' + stock.id} onClick={() => { setExpandedStockId(expanded ? null : stock.id); setError(null) }}>
-                <div className="pp-stock-identity"><StockAvatar name={stock.name} order={stock.displayOrder} /><div><span className="pp-stock-name">{stock.name}</span><span className="pp-stock-meta">{isDelisted(stock) ? <span className="pp-delisted-badge">상장폐지</span> : holdings[stock.id] > 0 ? <span className="pp-holding-badge">보유 {holdings[stock.id].toLocaleString()}주</span> : 'UNI-D · ' + String(stock.displayOrder).padStart(3, '0')}</span></div></div>
+                <div className="pp-stock-identity"><StockAvatar name={stock.name} order={stock.displayOrder} /><div><span className="pp-stock-name">{stock.name}</span><span className="pp-stock-meta">{isDelisted(stock) ? <span className="pp-delisted-badge">상장폐지</span> : holdings[stock.id] > 0 ? <span className="pp-holding-badge">보유 {holdings[stock.id].toLocaleString()}주</span> : '종목번호 ' + String(stock.displayOrder).padStart(3, '0')}</span></div></div>
                 <div className="pp-sparkline"><StockPriceChart series={series} compact /></div>
                 <div className="pp-stock-pricecol"><strong>{price === undefined ? '-' : price.toLocaleString()}<small> 원</small></strong><PriceChange price={price ?? 0} previous={previous} /></div>
                 <ChevronDown className="pp-expand-icon" />
@@ -346,10 +345,10 @@ export default function ParticipantPage() {
             </li>
           })}</ul>}
           {!marketLoading && !marketError && visibleStocks.length === 0 && <div className="pp-market-empty"><BriefcaseBusiness /><h3>{filter === 'held' ? '아직 보유한 종목이 없어요' : '등록된 종목이 없습니다'}</h3>{filter === 'held' && <button className="secondary-button" onClick={() => setFilter('all')}>전체 종목 보기<ArrowRight /></button>}</div>}
-          <div className="pp-market-footer"><span><Radio />라운드별 확정 가격</span><span>KRW · 원</span></div>
+          <div className="pp-market-footer"><span><Radio />라운드별 확정 가격</span><span>단위 원</span></div>
         </section>
         <aside className="pp-portfolio">
-          <div className="pp-section-heading"><h2>내 포트폴리오</h2><BriefcaseBusiness /></div>
+          <div className="pp-section-heading"><h2>내 포트폴리오</h2></div>
           <div className="pp-allocation" aria-label="자산 구성"><div style={{ width: (totalAssets > 0 ? Math.min(100, currentHoldingsValue / totalAssets * 100) : 0) + '%' }} /></div>
           <div className="pp-allocation-legend"><span><i />주식 {totalAssets > 0 ? (currentHoldingsValue / totalAssets * 100).toFixed(0) : 0}%</span><span><i />현금 {totalAssets > 0 ? (me.cash / totalAssets * 100).toFixed(0) : 0}%</span></div>
           <ul className="pp-position-list">{heldStocks.map(stock => <li key={stock.id}><button onClick={() => setSearchParams({ stock: String(stock.id) })}><StockAvatar name={stock.name} order={stock.displayOrder} /><span><strong>{stock.name}</strong><small>{holdings[stock.id].toLocaleString()}주 보유</small></span><b>{(holdings[stock.id] * (priceForRound(stock.id, gameState.currentRound) ?? 0)).toLocaleString()}<small>원</small></b><ChevronRight /></button></li>)}</ul>

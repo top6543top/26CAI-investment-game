@@ -2,8 +2,6 @@
   min-height: 100dvh;
   background: var(--pp-bg);
   color: var(--pp-ink);
-  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
-  letter-spacing: 0;
 }
 .host-body { max-width: 1160px; margin: 0 auto; padding: 32px 28px 56px; }
 .host-heading, .host-round-top, .host-pause-section, .host-danger { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -38,7 +36,7 @@
 .host-btn:disabled { opacity: .45; cursor: not-allowed; }
 .host-pause-section { margin-top: 30px; padding-top: 25px; border-top: 1px solid var(--pp-line); }
 .host-pause-section h2 { margin-bottom: 6px; }
-.host-message { display: flex; align-items: flex-start; gap: 9px; margin: 22px 0 0; padding: 14px; border-radius: 6px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.host-message { display: flex; align-items: flex-start; gap: 9px; margin: 22px 0 0; padding: 14px; border-radius: 8px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .host-message svg { margin-top: 2px; }
 .host-message-ok { color: var(--pp-buy); background: var(--pp-gain-bg); }
 .host-message-error { color: var(--pp-loss); background: var(--pp-loss-bg); }

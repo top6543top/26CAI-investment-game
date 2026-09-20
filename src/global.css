@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -19,7 +19,6 @@
   --pp-gain-bg: #1e3029;
   --pp-closed: #efc779;
   --pp-closed-bg: #30291d;
-  --pp-shadow: 0 8px 24px rgb(0 0 0 / 12%);
 }
 
 * { box-sizing: border-box; letter-spacing: 0; }
@@ -54,7 +53,7 @@ svg.lucide { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.8; }
 .primary-button:hover:not(:disabled) { background: #e0ff9c; }
 .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; background: transparent; color: var(--pp-ink); border: 1px solid var(--pp-line); font-size: 13px; font-weight: 600; }
 .secondary-button:hover:not(:disabled) { background: var(--pp-surface-2); border-color: #697078; }
-.inline-error { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; border: 1px solid #713b43; border-radius: 6px; color: var(--pp-loss); background: var(--pp-loss-bg); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.inline-error { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; border: 1px solid #713b43; border-radius: 8px; color: var(--pp-loss); background: var(--pp-loss-bg); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .inline-error svg { margin-top: 2px; }
 .loading-screen { min-height: 65vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 32px; text-align: center; }
 .loading-screen p { color: var(--pp-ink-dim); font-size: 14px; line-height: 1.7; }

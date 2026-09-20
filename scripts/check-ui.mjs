@@ -29,7 +29,7 @@ async function createPage(browser, options = {}) {
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin === baseURL) return route.continue();
+    if (url.origin === baseURL || url.hostname === 'cdn.jsdelivr.net') return route.continue();
     if (!url.pathname.includes('/rest/v1/')) return route.abort();
     let data;
     const table = url.pathname.split('/').at(-1);

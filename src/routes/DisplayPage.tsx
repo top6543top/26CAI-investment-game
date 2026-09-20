@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ChartNoAxesCombined, CircleAlert, Flag, LoaderCircle, Pause, Radio, RotateCcw, Trophy, Users } from 'lucide-react'
+import { ArrowLeft, CircleAlert, Flag, LoaderCircle, Pause, Radio, RotateCcw, Trophy, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useGameState } from '../hooks/useGameState'
@@ -196,7 +196,7 @@ export default function DisplayPage() {
 
           <section className="disp-chart-section" aria-labelledby="disp-chart-title">
             <div className="disp-section-heading">
-              <h2 id="disp-chart-title"><ChartNoAxesCombined size={18} aria-hidden="true" />자산 레이스</h2>
+              <h2 id="disp-chart-title">자산 레이스</h2>
               {history.length > 0 && !historyLoading && !historyError && <span>라운드별 총자산</span>}
             </div>
             {historyLoading ? (
